@@ -1,0 +1,68 @@
+annotations:
+  description: "Application {{ $labels.app }} in namespace {{ $labels.namespace }} has been unhealthy for more than 5 minutes. Workload type: {{ $labels.workload_type }}."
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#unhealthy-application"
+  summary: Unhealthy application detected in testnet
+condition: C
+data:
+  - datasourceUid: victoria-metrics-testnet
+    model:
+      editorMode: code
+      expr: "# Unhealthy StatefulSets\n(\n  label_replace(\n    label_replace(\n      (\n        (kube_statefulset_replicas{namespace=~\"applications|hyperlane\"}\n         - on(statefulset, namespace) kube_statefulset_status_replicas_available{namespace=~\"applications|hyperlane\"}) > 0\n      ) * 1\n      # EXCLUSION 1: Evicted pods (workload-level, not namespace-level)\n      # Only excludes the specific statefulset that has evicted pods\n      unless on(statefulset, namespace) (\n        label_replace(\n          kube_pod_status_reason{reason=~\"Evicted|NodeShutdown|Preempting\", namespace=~\"applications|hyperlane\"}\n          * on(pod, namespace) group_left(created_by_name)\n          kube_pod_info{created_by_kind=\"StatefulSet\", namespace=~\"applications|hyperlane\"},\n          \"statefulset\", \"$1\", \"created_by_name\", \"(.*)\"\n        )\n      )\n      # EXCLUSION 2: Crash loops - handled by dedicated alert\n      unless on(statefulset, namespace) (\n        label_replace(\n          kube_pod_container_status_waiting_reason{reason=\"CrashLoopBackOff\", namespace=~\"applications|hyperlane\"}\n          * on(pod, namespace) group_left(created_by_name)\n          kube_pod_info{created_by_kind=\"StatefulSet\", namespace=~\"applications|hyperlane\"},\n          \"statefulset\", \"$1\", \"created_by_name\", \"(.*)\"\n        )\n      )\n      # EXCLUSION 3: Dependent services when rollup is down\n      # Prevents cascading alerts - only alert on root cause (rollup)\n      unless on(statefulset, namespace) (\n        kube_statefulset_replicas{statefulset=~\"market-maker.*|rust-mm.*|indexer.*|liquidator.*\", namespace=\"applications\"}\n        and on() (\n          # Rollup StatefulSet is unhealthy\n          (kube_statefulset_replicas{statefulset=~\"rollup.*\", namespace=\"applications\"}\n           - on(statefulset, namespace) kube_statefulset_status_replicas_available{statefulset=~\"rollup.*\", namespace=\"applications\"}) > 0\n          or\n          # Rollup Deployment is unhealthy\n          kube_deployment_status_replicas_unavailable{deployment=~\"rollup.*\", namespace=\"applications\"} > 0\n        )\n      ),\n      \"app\", \"$1\", \"statefulset\", \"(.*)\"\n    ),\n    \"workload_type\", \"StatefulSet\", \"\", \"\"\n  )\n)\nor\n# Unhealthy Deployments\n(\n  label_replace(\n    label_replace(\n      (kube_deployment_status_replicas_unavailable{namespace=~\"applications|hyperlane\"} > 0) * 1\n      # EXCLUSION 1: Evicted pods (workload-level)\n      # Extract deployment name from replicaset (removes -<hash> suffix)\n      unless on(deployment, namespace) (\n        label_replace(\n          kube_pod_status_reason{reason=~\"Evicted|NodeShutdown|Preempting\", namespace=~\"applications|hyperlane\"}\n          * on(pod, namespace) group_left(created_by_name)\n          kube_pod_info{created_by_kind=\"ReplicaSet\", namespace=~\"applications|hyperlane\"},\n          \"deployment\", \"$1\", \"created_by_name\", \"(.+)-[a-z0-9]+$\"\n        )\n      )\n      # EXCLUSION 2: Crash loops - handled by dedicated alert\n      unless on(deployment, namespace) (\n        label_replace(\n          kube_pod_container_status_waiting_reason{reason=\"CrashLoopBackOff\", namespace=~\"applications|hyperlane\"}\n          * on(pod, namespace) group_left(created_by_name)\n          kube_pod_info{created_by_kind=\"ReplicaSet\", namespace=~\"applications|hyperlane\"},\n          \"deployment\", \"$1\", \"created_by_name\", \"(.+)-[a-z0-9]+$\"\n        )\n      )\n      # EXCLUSION 3: Dependent services when rollup is down\n      unless on(deployment, namespace) (\n        kube_deployment_status_replicas{deployment=~\"market-maker.*|rust-mm.*|indexer.*|liquidator.*\", namespace=\"applications\"}\n        and on() (\n          # Rollup StatefulSet is unhealthy\n          (kube_statefulset_replicas{statefulset=~\"rollup.*\", namespace=\"applications\"}\n           - on(statefulset, namespace) kube_statefulset_status_replicas_available{statefulset=~\"rollup.*\", namespace=\"applications\"}) > 0\n          or\n          # Rollup Deployment is unhealthy\n          kube_deployment_status_replicas_unavailable{deployment=~\"rollup.*\", namespace=\"applications\"} > 0\n        )\n      ),\n      \"app\", \"$1\", \"deployment\", \"(.*)\"\n    ),\n    \"workload_type\", \"Deployment\", \"\", \"\"\n  )\n)\nor\n# Failed CronJobs (alert at CronJob level, only if previously succeeded)\n# This prevents alert flooding from CronJobs that are consistently failing.\n# Only alerts if:\n#   1) CronJob hasn't succeeded in the last hour\n#   2) CronJob has succeeded at least once before (last_successful_time > 0)\n#   3) CronJob was scheduled recently (is active)\n(\n  label_replace(\n    label_replace(\n      (\n        (time() - kube_cronjob_status_last_successful_time{namespace=~\"applications|hyperlane\"}) > 3600\n        and\n        kube_cronjob_status_last_successful_time{namespace=~\"applications|hyperlane\"} > 0\n        and\n        (time() - kube_cronjob_status_last_schedule_time{namespace=~\"applications|hyperlane\"}) < 3600\n      ) * 1,\n      \"app\", \"$1\", \"cronjob\", \"(.*)\"\n    ),\n    \"workload_type\", \"CronJob\", \"\", \"\"\n  )\n)\nor\n# Failed standalone Jobs (not owned by a CronJob)\n# CronJob-owned jobs are handled by the CronJob alert above.\n# Jobs that failed stay in failed state forever, so we correlate with creation time.\n(\n  label_replace(\n    label_replace(\n      (\n        (\n          kube_job_failed{namespace=~\"applications|hyperlane\", condition=\"true\"} > 0\n          and on (job_name, namespace)\n          (time() - kube_job_created{namespace=~\"applications|hyperlane\"} < 3600)\n        )\n        # Exclude Jobs owned by CronJobs (handled by CronJob alert above)\n        unless on (job_name, namespace)\n        kube_job_owner{namespace=~\"applications|hyperlane\", owner_kind=\"CronJob\"}\n      ) * 1,\n      \"app\", \"$1\", \"job_name\", \"(.*)\"\n    ),\n    \"workload_type\", \"Job\", \"\", \"\"\n  )\n)\n"
+      intervalMs: 15000.0
+      maxDataPoints: 43200.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 300
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 0.0
+            type: gt
+          unloadEvaluator:
+            params:
+              - 0.0
+            type: lte
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: B
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: threshold
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 5m0s
+id: 120
+labels:
+  alert_type: application_health
+  environment: testnet
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Testnet - Application Health"
+title: Unhealthy Application
+uid: cfa9bk96hiarke
+updated: "2026-01-15T16:12:10.000Z"

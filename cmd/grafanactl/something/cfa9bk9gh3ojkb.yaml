@@ -1,0 +1,68 @@
+annotations:
+  description: "Rollup workload is unavailable in testnet.\n\nWorkload: {{ $labels.workload_name }} ({{ $labels.workload_type }})\nNamespace: {{ $labels.namespace }}\n\nIMPORTANT: Dependent services (market-maker, rust-mm, indexer, liquidator)\nwill also fail when rollup is down. Their alerts are suppressed to reduce noise.\nFocus on restoring the rollup first.\n"
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#rollup-down"
+  summary: "CRITICAL: Rollup is down in testnet"
+condition: C
+data:
+  - datasourceUid: victoria-metrics-testnet
+    model:
+      editorMode: code
+      expr: "# Rollup StatefulSet unhealthy\nlabel_replace(\n  label_replace(\n    (\n      (kube_statefulset_replicas{statefulset=~\"rollup.*\", namespace=\"applications\"}\n       - on(statefulset, namespace) kube_statefulset_status_replicas_available{statefulset=~\"rollup.*\", namespace=\"applications\"}) > 0\n    ) * 1,\n    \"workload_name\", \"$1\", \"statefulset\", \"(.*)\"\n  ),\n  \"workload_type\", \"StatefulSet\", \"\", \"\"\n)\nor\n# Rollup Deployment unhealthy\nlabel_replace(\n  label_replace(\n    (kube_deployment_status_replicas_unavailable{deployment=~\"rollup.*\", namespace=\"applications\"} > 0) * 1,\n    \"workload_name\", \"$1\", \"deployment\", \"(.*)\"\n  ),\n  \"workload_type\", \"Deployment\", \"\", \"\"\n)\n"
+      intervalMs: 15000.0
+      maxDataPoints: 1000.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 300
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 0.0
+            type: gt
+          unloadEvaluator:
+            params:
+              - 0.0
+            type: lte
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: B
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: threshold
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 3m0s
+id: 121
+labels:
+  alert_type: rollup_health
+  environment: testnet
+  severity: critical
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Testnet - Rollup Health"
+title: Rollup Down
+uid: cfa9bk9gh3ojkb
+updated: "2026-01-15T16:12:11.000Z"

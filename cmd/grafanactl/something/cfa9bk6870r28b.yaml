@@ -1,0 +1,86 @@
+annotations:
+  description: AppSync event rate is {{ printf "%.0f" $values.B.Value }} events/sec, which is below the expected 1000 events/sec threshold.
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#appsync-event-rate-degraded"
+  summary: AppSync event rate is degraded in testnet
+condition: C
+data:
+  - datasourceUid: victoria-metrics-testnet
+    model:
+      editorMode: code
+      expr: sum(rate(indexer_appsync_events_by_type[5m]))
+      intervalMs: 15000.0
+      maxDataPoints: 43200.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 300
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params: []
+            type: gt
+          operator:
+            type: and
+          query:
+            params:
+              - B
+          reducer:
+            params: []
+            type: last
+          type: query
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 1000.0
+            type: lt
+          operator:
+            type: and
+          query:
+            params:
+              - C
+          reducer:
+            params: []
+            type: last
+          type: query
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: $B < 1000
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: math
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 5m0s
+id: 102
+labels:
+  alert_type: appsync_event_rate
+  environment: testnet
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Testnet - AppSync Event Rate"
+title: AppSync Event Rate Degraded
+uid: cfa9bk6870r28b
+updated: "2026-01-15T16:12:09.000Z"

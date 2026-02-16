@@ -1,0 +1,69 @@
+annotations:
+  description: The VictoriaMetrics datasource has been unreachable for 2 minutes. All metric-based alerts are not functioning. Check the VictoriaMetrics pods and network connectivity.
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#datasource-unreachable"
+  summary: VictoriaMetrics datasource unreachable in mainnet
+condition: C
+data:
+  - datasourceUid: victoria-metrics-mainnet
+    model:
+      editorMode: code
+      expr: count(up{job="kubelet"})
+      intervalMs: 15000.0
+      maxDataPoints: 1000.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 300
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: replaceNN
+        replaceWithValue: 0.0
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 1.0
+            type: lt
+          unloadEvaluator:
+            params:
+              - 1.0
+            type: gte
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: B
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: threshold
+    refId: C
+    relativeTimeRange: {}
+execErrState: Alerting
+folderUID: alerts
+for: 2m0s
+id: 112
+labels:
+  alert_type: infrastructure
+  environment: mainnet
+  severity: critical
+  team: platform
+noDataState: Alerting
+orgID: 1
+provenance: api
+ruleGroup: "Mainnet - Datasource Health"
+title: VictoriaMetrics Unreachable
+uid: cfa9bk7for3swe
+updated: "2026-01-15T16:12:10.000Z"

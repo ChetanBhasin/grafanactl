@@ -1,0 +1,77 @@
+annotations:
+  description: "Container {{ $labels.container }} in pod {{ $labels.pod }} (namespace {{ $labels.namespace }}) is using {{ printf \"%.0f\" $values.B.Value }}% of its memory limit (threshold: >90%). This can indicate a memory leak or a mis-sized limit."
+  runbook_url: https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks
+  summary: Container memory usage high in mainnet
+condition: C
+data:
+  - datasourceUid: victoria-metrics-mainnet
+    model:
+      editorMode: code
+      expr: |
+        100 * (
+          max by (namespace, pod, container) (
+            container_memory_working_set_bytes{namespace=~"applications|hyperlane", container!="", container!="POD", image!=""}
+          )
+          /
+          max by (namespace, pod, container) (
+            kube_pod_container_resource_limits{namespace=~"applications|hyperlane", resource="memory"}
+          )
+        )
+      intervalMs: 15000.0
+      maxDataPoints: 1000.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 300
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 90.0
+            type: gt
+          unloadEvaluator:
+            params:
+              - 90.0
+            type: lt
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: B
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: threshold
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 15m0s
+id: 117
+labels:
+  alert_type: pod_lifecycle
+  environment: mainnet
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Mainnet - Pod Lifecycle"
+title: Container Memory Usage High
+uid: cfa9bk7ral7nkd
+updated: "2026-02-13T11:22:32.000Z"

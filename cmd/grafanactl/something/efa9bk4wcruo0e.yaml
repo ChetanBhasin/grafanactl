@@ -1,0 +1,71 @@
+annotations:
+  description: API container has {{ printf "%.0f" $values.B.Value }} errors in the last 5 minutes, which exceeds the threshold of 5 errors.
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#api-error-rate-high"
+  summary: High API error rate in staging
+condition: C
+data:
+  - datasourceUid: victoria-logs-staging
+    model:
+      editorMode: code
+      expr: "container_name: \"api\" AND (level: error OR res.statusCode: 500)\n| stats by (_time:5m) count() as errors\n"
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      queryType: statsRange
+      refId: A
+    queryType: statsRange
+    refId: A
+    relativeTimeRange:
+      from: 300
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: replaceNN
+        replaceWithValue: 0.0
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 5.0
+            type: gt
+          unloadEvaluator:
+            params:
+              - 5.0
+            type: lt
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: B
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: threshold
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 5m0s
+id: 95
+labels:
+  alert_type: api_errors
+  environment: staging
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Staging - API Errors"
+title: API Error Rate High
+uid: efa9bk4wcruo0e
+updated: "2026-02-13T12:51:06.000Z"

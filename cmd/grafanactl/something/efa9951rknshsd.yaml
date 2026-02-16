@@ -1,0 +1,74 @@
+annotations:
+  description: The Taker account (GiRyDgEQaHw7gwEtMPvUq7AEfVpVcd39tctNHnkjYxEJ) has available maintenance margin of {{ printf "%.2f" $values.B.Value }}, which is below the $10 threshold.
+  summary: Taker available maintenance margin is below $10
+condition: C
+data:
+  - datasourceUid: ef7drfxk2ll34d
+    model:
+      editorMode: code
+      format: 1.0
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      meta:
+        builderOptions:
+          mode: list
+      queryType: sql
+      rawSql: |
+        SELECT
+            toStartOfMinute(indexed_time) AS time,
+            any(available_maintenance_margin) as available_maintenance_margin
+        FROM bullet_mainnet.user_account_snapshot
+        WHERE $__timeFilter(indexed_time)
+            AND address == 'GiRyDgEQaHw7gwEtMPvUq7AEfVpVcd39tctNHnkjYxEJ'
+        GROUP BY time
+        ORDER BY time ASC
+        LIMIT 10000
+      refId: A
+    queryType: sql
+    refId: A
+    relativeTimeRange:
+      from: 600
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: $B < 10
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: math
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: mainnet-low-priority-alerts
+for: 5m0s
+id: 87
+labels:
+  alert_type: taker
+  environment: mainnet
+  priority: low
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: Market Maker Alerts
+title: Taker Available Maintenance Margin < $10
+uid: efa9951rknshsd
+updated: "2026-02-13T12:51:05.000Z"

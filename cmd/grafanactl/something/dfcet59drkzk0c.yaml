@@ -1,0 +1,78 @@
+annotations:
+  description: "Insert failure ratio for {{ $labels.table_name }} is {{ printf \"%.2f\" $values.B.Value }} (threshold: > 0.10) over the last hour."
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#redpanda-connect-insert-failures"
+  summary: ClickHouse insert failure rate high in staging
+condition: C
+data:
+  - datasourceUid: ef7drfxk2ll34d
+    model:
+      editorMode: code
+      format: 1.0
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      meta:
+        builderOptions:
+          mode: list
+      queryType: sql
+      rawSql: |
+        SELECT
+            toStartOfMinute(now()) AS time,
+            table_name,
+            if(count() > 0, countIf(type != 'QueryFinish') / count(), 0) AS failure_rate
+        FROM system.query_log
+        ARRAY JOIN tables AS table_name, databases AS database_name
+        WHERE $__timeFilter(event_time)
+            AND database_name = 'bullet_staging'
+            AND query_kind = 'Insert'
+            AND type IN ('QueryFinish', 'ExceptionBeforeStart', 'ExceptionWhileProcessing')
+        GROUP BY table_name
+        ORDER BY failure_rate DESC
+        LIMIT 10000
+      refId: A
+    queryType: sql
+    refId: A
+    relativeTimeRange:
+      from: 3600
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: $B > 0.10
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: math
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 10m0s
+id: 133
+labels:
+  alert_type: redpanda_connect
+  environment: staging
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Staging - Redpanda Connect"
+title: ClickHouse Insert Failure Rate High
+uid: dfcet59drkzk0c
+updated: "2026-02-13T12:51:05.000Z"

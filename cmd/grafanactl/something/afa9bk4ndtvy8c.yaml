@@ -1,0 +1,71 @@
+annotations:
+  description: "A critical validator error has been detected indicating an incorrect tree root / reorg.\n\nPod: {{ $labels.pod_name }}\nContainer: {{ $labels.container_name }}\nNamespace: {{ $labels.namespace }}\n\nThis is a potentially serious error impacting signed messages.\nDO NOT forcefully resume operation of this validator.\nKeep it crashlooping or shut down until you receive support.\n\nCheck VictoriaLogs for the full log message with query:\n_msg:~\"Incorrect tree root|do NOT forcefully resume|shut down until you receive support\"\n"
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#validator-reorg-error"
+  summary: "CRITICAL: Validator reorg error detected in testnet"
+condition: C
+data:
+  - datasourceUid: victoria-logs-testnet
+    model:
+      editorMode: code
+      expr: "_msg:~\"(shut down until you receive support|do NOT forcefully resume|Incorrect tree root.*reorg)\"\n| namespace: hyperlane\n| stats by (pod_name, container_name, namespace, _time:5m) count() as errors\n"
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      queryType: statsRange
+      refId: A
+    queryType: statsRange
+    refId: A
+    relativeTimeRange:
+      from: 300
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: replaceNN
+        replaceWithValue: 0.0
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 0.0
+            type: gt
+          unloadEvaluator:
+            params:
+              - 0.0
+            type: lte
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: B
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: threshold
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 1m0s
+id: 92
+labels:
+  alert_type: validator_error
+  environment: testnet
+  severity: critical
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Testnet - Validator Reorg Error"
+title: Validator Reorg Error Detected
+uid: afa9bk4ndtvy8c
+updated: "2026-02-13T12:51:05.000Z"

@@ -1,0 +1,73 @@
+annotations:
+  description: PVC {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} is at {{ printf "%.1f" $values.B.Value }}% capacity.
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#pvc-usage-high"
+  summary: PVC usage is high in testnet
+condition: C
+data:
+  - datasourceUid: victoria-metrics-testnet
+    model:
+      editorMode: code
+      expr: |
+        100 * (
+          kubelet_volume_stats_used_bytes{namespace=~"applications|hyperlane"}
+          /
+          kubelet_volume_stats_capacity_bytes{namespace=~"applications|hyperlane"}
+        )
+      intervalMs: 15000.0
+      maxDataPoints: 43200.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 600
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 80.0
+            type: gt
+          unloadEvaluator:
+            params:
+              - 80.0
+            type: lt
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: B
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: threshold
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 10m0s
+id: 118
+labels:
+  alert_type: pvc_usage
+  environment: testnet
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Testnet - PVC Usage"
+title: PVC Usage High
+uid: efa9bk8ntrls0e
+updated: "2026-01-15T16:12:10.000Z"

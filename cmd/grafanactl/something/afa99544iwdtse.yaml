@@ -1,0 +1,74 @@
+annotations:
+  description: Market {{ $labels.market }} has total asks volume of {{ printf "%.2f" $values.B.Value }}, which is below the $10k threshold.
+  summary: Total asks volume is below $10k for major markets
+condition: C
+data:
+  - datasourceUid: ef7drfxk2ll34d
+    model:
+      editorMode: code
+      format: 1.0
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      meta:
+        builderOptions:
+          mode: list
+      queryType: sql
+      rawSql: |
+        SELECT
+            toStartOfMinute(indexed_time) AS time,
+            sum(notional_volume_asks) as notional_volume_asks,
+            market
+        FROM bullet_mainnet.perp_market_snapshot
+        WHERE $__timeFilter(indexed_time) and market in ['SOL-USD', 'BTC-USD', 'ETH-USD']
+        GROUP BY time, market
+        ORDER BY time ASC
+        LIMIT 10000
+      refId: A
+    queryType: sql
+    refId: A
+    relativeTimeRange:
+      from: 600
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: $B < 10000
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: math
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: mainnet-low-priority-alerts
+for: 5m0s
+id: 91
+labels:
+  alert_type: market_volume
+  environment: mainnet
+  priority: low
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: Market Volume Alerts
+title: Total asks volume < 10k
+uid: afa99544iwdtse
+updated: "2026-02-13T12:51:05.000Z"

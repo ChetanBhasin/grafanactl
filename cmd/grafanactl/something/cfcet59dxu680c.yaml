@@ -1,0 +1,72 @@
+annotations:
+  description: "exchange_place_order p95 lag is {{ printf \"%.2f\" $values.B.Value }}s (threshold: > 3s) over the last 10 minutes."
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#redpanda-connect-timestamp-lag"
+  summary: Execution vs indexed timestamp lag high in mainnet
+condition: C
+data:
+  - datasourceUid: ef7drfxk2ll34d
+    model:
+      editorMode: code
+      format: 1.0
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      meta:
+        builderOptions:
+          mode: list
+      queryType: sql
+      rawSql: |
+        SELECT
+            toStartOfMinute(execution_timestamp) AS minute,
+            quantile(0.95)(date_diff('microseconds', execution_timestamp, indexed_timestamp) / 1000 / 1000) AS p95_lag_s
+        FROM bullet_mainnet.exchange_place_order FINAL
+        WHERE $__timeFilter(execution_timestamp)
+        GROUP BY minute
+        ORDER BY minute ASC
+      refId: A
+    queryType: sql
+    refId: A
+    relativeTimeRange:
+      from: 600
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: $B > 3
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: math
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 5m0s
+id: 136
+labels:
+  alert_type: redpanda_connect
+  environment: mainnet
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Mainnet - Redpanda Connect"
+title: Execution vs Indexed Timestamp Lag High
+uid: cfcet59dxu680c
+updated: "2026-02-13T12:51:05.000Z"

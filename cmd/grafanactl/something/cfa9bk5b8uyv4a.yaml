@@ -1,0 +1,91 @@
+annotations:
+  description: PVC {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} is at {{ printf "%.1f" $values.B.Value }}% capacity.
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#pvc-usage-high"
+  summary: Rollup PVC usage is high in testnet
+condition: C
+data:
+  - datasourceUid: victoria-metrics-testnet
+    model:
+      editorMode: code
+      expr: |
+        (
+          kubelet_volume_stats_used_bytes{persistentvolumeclaim=~".*rollup.*"}
+          / on(namespace, persistentvolumeclaim)
+          kube_persistentvolumeclaim_resource_requests_storage_bytes{persistentvolumeclaim=~".*rollup.*"}
+        ) * 100
+      intervalMs: 15000.0
+      maxDataPoints: 43200.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 600
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params: []
+            type: gt
+          operator:
+            type: and
+          query:
+            params:
+              - B
+          reducer:
+            params: []
+            type: last
+          type: query
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: max
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 80.0
+            type: gt
+          operator:
+            type: and
+          query:
+            params:
+              - C
+          reducer:
+            params: []
+            type: last
+          type: query
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: $B > 80
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: math
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 10m0s
+id: 99
+labels:
+  alert_type: pvc_usage
+  environment: testnet
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Testnet - Rollup PVC Usage"
+title: Rollup PVC Usage High
+uid: cfa9bk5b8uyv4a
+updated: "2026-01-15T16:12:08.000Z"

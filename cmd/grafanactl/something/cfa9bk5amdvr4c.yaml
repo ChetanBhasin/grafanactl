@@ -1,0 +1,59 @@
+annotations:
+  description: Hyperlane {{ $labels.queue_name }} has {{ printf "%.0f" $values.B.Value }} pending messages. Messages may be backing up.
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#hyperlane-queue-depth-high"
+  summary: Hyperlane queue depth high in mainnet
+condition: C
+data:
+  - datasourceUid: victoria-metrics-mainnet
+    model:
+      editorMode: code
+      expr: hyperlane_submitter_queue_length{queue_name=~"submit_queue|prepare_queue"}
+      intervalMs: 15000.0
+      maxDataPoints: 1000.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 600
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: max
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: $B > 100
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: math
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 10m0s
+id: 100
+labels:
+  alert_type: hyperlane_health
+  environment: mainnet
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Mainnet - Hyperlane Health"
+title: Hyperlane Queue Depth High
+uid: cfa9bk5amdvr4c
+updated: "2026-01-15T16:12:08.000Z"

@@ -24,6 +24,7 @@ Manipulate Grafana resources.
 ### SEE ALSO
 
 * [grafanactl](grafanactl.md)	 - 
+* [grafanactl resources alerting](grafanactl_resources_alerting.md)	 - Manage Grafana alerting provisioning resources
 * [grafanactl resources delete](grafanactl_resources_delete.md)	 - Delete resources from Grafana
 * [grafanactl resources edit](grafanactl_resources_edit.md)	 - Edit resources from Grafana
 * [grafanactl resources get](grafanactl_resources_get.md)	 - Get resources from Grafana

@@ -1,0 +1,68 @@
+annotations:
+  description: "Indexer tx number has not advanced in the last 5 minutes (delta: {{ printf \"%.0f\" $values.B.Value }}). This alert is suppressed when rollup is down."
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#indexer-tx-number-halted"
+  summary: Indexer last tx number halted in mainnet
+condition: C
+data:
+  - datasourceUid: victoria-metrics-mainnet
+    model:
+      editorMode: code
+      expr: "(\n  max_over_time(indexer_tx_tracker_current_tx[5m])\n  - min_over_time(indexer_tx_tracker_current_tx[5m])\n)\nunless on() (\n  # Rollup unhealthy - suppress dependent alerts\n  (kube_statefulset_replicas{statefulset=~\"rollup.*\", namespace=\"applications\"}\n   - on(statefulset, namespace) kube_statefulset_status_replicas_available{statefulset=~\"rollup.*\", namespace=\"applications\"}) > 0\n  or\n  (kube_deployment_status_replicas_unavailable{deployment=~\"rollup.*\", namespace=\"applications\"} > 0)\n)\n"
+      intervalMs: 15000.0
+      maxDataPoints: 43200.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 300
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 1.0
+            type: lt
+          unloadEvaluator:
+            params:
+              - 1.0
+            type: gte
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: B
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: threshold
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 5m0s
+id: 147
+labels:
+  alert_type: indexer
+  environment: mainnet
+  severity: critical
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Mainnet - Indexer Health"
+title: Indexer Last Tx Number Halted
+uid: cfcet5cej5tkwd
+updated: "2026-02-06T09:23:40.000Z"

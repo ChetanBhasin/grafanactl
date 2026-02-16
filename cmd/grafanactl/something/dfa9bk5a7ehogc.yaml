@@ -1,0 +1,59 @@
+annotations:
+  description: Hyperlane has reported a critical error in the last 5 minutes. Check the relayer and validator logs immediately.
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#hyperlane-critical-error"
+  summary: Hyperlane critical error detected in mainnet
+condition: C
+data:
+  - datasourceUid: victoria-metrics-mainnet
+    model:
+      editorMode: code
+      expr: increase(hyperlane_critical_error[5m])
+      intervalMs: 15000.0
+      maxDataPoints: 1000.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 300
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: max
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: $B > 0
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: math
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 1m0s
+id: 98
+labels:
+  alert_type: hyperlane_health
+  environment: mainnet
+  severity: critical
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Mainnet - Hyperlane Health"
+title: Hyperlane Critical Error
+uid: dfa9bk5a7ehogc
+updated: "2026-01-15T16:12:08.000Z"

@@ -12,6 +12,29 @@ import (
 )
 
 func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
+	cfg, err := transportConfigFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return goapi.NewHTTPClientWithConfig(strfmt.Default, cfg), nil
+}
+
+func GetVersion(ctx *config.Context) (*semver.Version, error) {
+	gClient, err := ClientFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	healthResponse, err := gClient.Health.GetHealth()
+	if err != nil {
+		return nil, err
+	}
+
+	return semver.NewVersion(healthResponse.Payload.Version)
+}
+
+func transportConfigFromContext(ctx *config.Context) (*goapi.TransportConfig, error) {
 	if ctx == nil {
 		return nil, errors.New("no context provided")
 	}
@@ -34,30 +57,18 @@ func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
 		cfg.TLSConfig = ctx.Grafana.TLS.ToStdTLSConfig()
 	}
 
-	// Authentication
-	if ctx.Grafana.User != "" && ctx.Grafana.Password != "" {
-		cfg.BasicAuth = url.UserPassword(ctx.Grafana.User, ctx.Grafana.Password)
-	}
+	// API token takes precedence over basic auth.
 	if ctx.Grafana.APIToken != "" {
 		cfg.APIKey = ctx.Grafana.APIToken
-	}
-	if ctx.Grafana.OrgID != 0 {
-		cfg.OrgID = ctx.Grafana.OrgID
+		return cfg, nil
 	}
 
-	return goapi.NewHTTPClientWithConfig(strfmt.Default, cfg), nil
-}
-
-func GetVersion(ctx *config.Context) (*semver.Version, error) {
-	gClient, err := ClientFromContext(ctx)
-	if err != nil {
-		return nil, err
+	if ctx.Grafana.User != "" && ctx.Grafana.Password != "" {
+		cfg.BasicAuth = url.UserPassword(ctx.Grafana.User, ctx.Grafana.Password)
+		if ctx.Grafana.OrgID != 0 {
+			cfg.OrgID = ctx.Grafana.OrgID
+		}
 	}
 
-	healthResponse, err := gClient.Health.GetHealth()
-	if err != nil {
-		return nil, err
-	}
-
-	return semver.NewVersion(healthResponse.Payload.Version)
+	return cfg, nil
 }

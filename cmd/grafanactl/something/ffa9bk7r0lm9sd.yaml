@@ -1,0 +1,68 @@
+annotations:
+  description: Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} was recently OOMKilled. Container {{ $labels.container }} exceeded memory limits.
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#pod-oomkilled"
+  summary: Pod OOMKilled in mainnet
+condition: C
+data:
+  - datasourceUid: victoria-metrics-mainnet
+    model:
+      editorMode: code
+      expr: "kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\", namespace=~\"applications|hyperlane\"} and on (namespace, pod) (time() - kube_pod_start_time{namespace=~\"applications|hyperlane\"} < 300)"
+      intervalMs: 15000.0
+      maxDataPoints: 1000.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 300
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 0.0
+            type: gt
+          unloadEvaluator:
+            params:
+              - 0.0
+            type: lte
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: B
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: threshold
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 2m0s
+id: 116
+labels:
+  alert_type: pod_lifecycle
+  environment: mainnet
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Mainnet - Pod Lifecycle"
+title: Pod OOMKilled
+uid: ffa9bk7r0lm9sd
+updated: "2026-02-13T11:22:32.000Z"

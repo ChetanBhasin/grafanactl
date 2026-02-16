@@ -21,8 +21,6 @@ var ignoredResourceGroups = []string{
 	"featuretoggle.grafana.app",
 	"service.grafana.app",
 	"userstorage.grafana.app",
-	// TODO: check with alerting folks if this should be ignored or not
-	"notifications.alerting.grafana.app",
 	"iam.grafana.app",
 }
 

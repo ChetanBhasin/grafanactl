@@ -1,0 +1,68 @@
+annotations:
+  description: "Relative delta between websocket msg/s and Kafka msg/s is {{ printf \"%.2f\" $values.B.Value }} (threshold: > 0.20) over the last 5 minutes."
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#indexer-websocket-kafka-delta"
+  summary: Indexer websocket vs Kafka rate delta is high in staging
+condition: C
+data:
+  - datasourceUid: victoria-metrics-staging
+    model:
+      editorMode: code
+      expr: "abs(\n  sum(rate(indexer_websocket_messages_total{status=\"success\"}[5m]))\n  - sum(rate(indexer_kafka_messages_sent_total[5m]))\n)\n/\nclamp_min(sum(rate(indexer_websocket_messages_total{status=\"success\"}[5m])), 1)\n"
+      intervalMs: 15000.0
+      maxDataPoints: 43200.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 300
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 0.2
+            type: gt
+          unloadEvaluator:
+            params:
+              - 0.2
+            type: lt
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: B
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: threshold
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 5m0s
+id: 140
+labels:
+  alert_type: indexer
+  environment: staging
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Staging - Indexer Health"
+title: Websocket vs Kafka Rate Delta High
+uid: cfcet59gupwqoc
+updated: "2026-02-06T09:23:38.000Z"

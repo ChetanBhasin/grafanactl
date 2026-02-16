@@ -1,0 +1,69 @@
+annotations:
+  description: "CronJob {{ $labels.owner_name }} in namespace {{ $labels.namespace }} has {{ printf \"%.0f\" $values.B.Value }} failed job attempts in the last hour (threshold: >3). This alert is suppressed when rollup is down."
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#high-pod-restart-count"
+  summary: CronJob has failed job attempts in testnet
+condition: C
+data:
+  - datasourceUid: victoria-metrics-testnet
+    model:
+      editorMode: code
+      expr: "sum by (owner_name, namespace) (\n  kube_job_failed{condition=\"true\", namespace=~\"applications|hyperlane\"}\n  * on (job_name, namespace) group_left(owner_name)\n  kube_job_owner{owner_kind=\"CronJob\", namespace=~\"applications|hyperlane\"}\n  and on (job_name, namespace)\n  (time() - kube_job_created{namespace=~\"applications|hyperlane\"} < 3600)\n)\nunless on() (\n  # Rollup unhealthy - suppress dependent alerts\n  (kube_statefulset_replicas{statefulset=~\"rollup.*\", namespace=\"applications\"}\n   - on(statefulset, namespace) kube_statefulset_status_replicas_available{statefulset=~\"rollup.*\", namespace=\"applications\"}) > 0\n  or\n  (kube_deployment_status_replicas_unavailable{deployment=~\"rollup.*\", namespace=\"applications\"} > 0)\n)\n"
+      intervalMs: 15000.0
+      maxDataPoints: 1000.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 3600
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: replaceNN
+        replaceWithValue: 0.0
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 3.0
+            type: gt
+          unloadEvaluator:
+            params:
+              - 3.0
+            type: lt
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: B
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: threshold
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 10m0s
+id: 162
+labels:
+  alert_type: pod_lifecycle
+  environment: testnet
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Testnet - Pod Lifecycle"
+title: CronJob Failed Job Attempts
+uid: ffd42xy42hddsd
+updated: "2026-02-13T11:22:32.000Z"

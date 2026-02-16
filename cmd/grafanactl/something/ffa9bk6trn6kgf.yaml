@@ -1,0 +1,59 @@
+annotations:
+  description: Hyperlane relayer wallet balance is {{ printf "%.4f" $values.B.Value }}. The relayer may not be able to submit transactions.
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#hyperlane-wallet-balance-low"
+  summary: Hyperlane relayer wallet balance low in testnet
+condition: C
+data:
+  - datasourceUid: victoria-metrics-testnet
+    model:
+      editorMode: code
+      expr: hyperlane_wallet_balance{agent="relayer"}
+      intervalMs: 15000.0
+      maxDataPoints: 1000.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 300
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: min
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: $B < 0.1
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: math
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 5m0s
+id: 105
+labels:
+  alert_type: hyperlane_health
+  environment: testnet
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Testnet - Hyperlane Health"
+title: Hyperlane Wallet Balance Low
+uid: ffa9bk6trn6kgf
+updated: "2026-01-15T16:12:09.000Z"

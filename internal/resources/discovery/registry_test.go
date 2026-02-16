@@ -548,6 +548,54 @@ func TestRegistry_SupportedResources(t *testing.T) {
 	}
 }
 
+func TestRegistry_SupportedResources_IncludesAlertingResources(t *testing.T) {
+	client := &mockDiscoveryClient{
+		groups: []*metav1.APIGroup{
+			{
+				Name: "notifications.alerting.grafana.app",
+				Versions: []metav1.GroupVersionForDiscovery{
+					{
+						GroupVersion: "notifications.alerting.grafana.app/v1alpha1",
+						Version:      "v1alpha1",
+					},
+				},
+				PreferredVersion: metav1.GroupVersionForDiscovery{
+					GroupVersion: "notifications.alerting.grafana.app/v1alpha1",
+					Version:      "v1alpha1",
+				},
+			},
+		},
+		resources: []*metav1.APIResourceList{
+			{
+				GroupVersion: "notifications.alerting.grafana.app/v1alpha1",
+				APIResources: []metav1.APIResource{
+					{
+						Name:         "notificationpolicies",
+						SingularName: "notificationpolicy",
+						Kind:         "NotificationPolicy",
+						Namespaced:   true,
+					},
+				},
+			},
+		},
+	}
+
+	reg, err := discovery.NewRegistry(t.Context(), client)
+	require.NoError(t, err)
+
+	assert.ElementsMatch(t, resources.Descriptors{
+		{
+			Kind:     "NotificationPolicy",
+			Plural:   "notificationpolicies",
+			Singular: "notificationpolicy",
+			GroupVersion: schema.GroupVersion{
+				Group:   "notifications.alerting.grafana.app",
+				Version: "v1alpha1",
+			},
+		},
+	}, reg.SupportedResources())
+}
+
 func TestRegistry_Discover(t *testing.T) {
 	tests := []struct {
 		name      string

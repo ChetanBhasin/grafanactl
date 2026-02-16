@@ -1,0 +1,68 @@
+annotations:
+  description: Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted {{ printf "%.0f" $values.B.Value }} times in the last 15 minutes. The container is repeatedly crashing.
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#pod-crashloopbackoff"
+  summary: Pod crash loop detected in testnet
+condition: C
+data:
+  - datasourceUid: victoria-metrics-testnet
+    model:
+      editorMode: code
+      expr: increase(kube_pod_container_status_restarts_total{namespace=~"applications|hyperlane"}[15m])
+      intervalMs: 15000.0
+      maxDataPoints: 1000.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 900
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      conditions:
+        - evaluator:
+            params:
+              - 3.0
+            type: gte
+          unloadEvaluator:
+            params:
+              - 2.0
+            type: lt
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: B
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: threshold
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 10m0s
+id: 108
+labels:
+  alert_type: pod_lifecycle
+  environment: testnet
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Testnet - Pod Lifecycle"
+title: Pod Crash Loop Detected
+uid: bfa9bk73er2m8e
+updated: "2026-02-13T11:22:32.000Z"

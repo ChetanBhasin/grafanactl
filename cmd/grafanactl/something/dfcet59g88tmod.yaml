@@ -1,0 +1,62 @@
+annotations:
+  description: "Kafka write success ratio is {{ printf \"%.2f\" $values.B.Value }} (threshold: < 0.90) over the last 5 minutes."
+  runbook_url: "https://github.com/zetamarkets/terraform-infrastructure/wiki/Runbooks#indexer-kafka-write-success-rate"
+  summary: Indexer Kafka write success rate is low in staging
+condition: C
+data:
+  - datasourceUid: victoria-metrics-staging
+    model:
+      editorMode: code
+      expr: |
+        (sum(increase(indexer_kafka_messages_total{status="success"}[5m])) or vector(0))
+        /
+        sum(increase(indexer_kafka_messages_total[5m]))
+      intervalMs: 15000.0
+      maxDataPoints: 43200.0
+      refId: A
+    refId: A
+    relativeTimeRange:
+      from: 300
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: $B < 0.90
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: math
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 5m0s
+id: 138
+labels:
+  alert_type: indexer
+  environment: staging
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Staging - Indexer Health"
+title: Kafka Write Success Rate Low
+uid: dfcet59g88tmod
+updated: "2026-02-06T09:23:38.000Z"

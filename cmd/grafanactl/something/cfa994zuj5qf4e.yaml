@@ -1,0 +1,73 @@
+annotations:
+  description: Oracle price staleness is {{ printf "%.0f" $values.B.Value }} seconds, which exceeds the 30s threshold. Prices may be stale.
+  summary: Oracle price staleness exceeds 30 seconds
+condition: C
+data:
+  - datasourceUid: ef7drfxk2ll34d
+    model:
+      editorMode: code
+      format: 1.0
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      meta:
+        builderOptions:
+          mode: list
+      queryType: sql
+      rawSql: |
+        SELECT
+            toStartOfMinute(indexed_time) AS time,
+            max(price_staleness_seconds) as price_staleness_seconds
+        FROM bullet_mainnet.oracle_prices_snapshot
+        WHERE $__timeFilter(indexed_time)
+        GROUP BY time
+        ORDER BY time ASC
+        LIMIT 10000
+      refId: A
+    queryType: sql
+    refId: A
+    relativeTimeRange:
+      from: 600
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: $B > 30
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: math
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: alerts
+for: 5m0s
+id: 79
+labels:
+  alert_type: oracle
+  environment: mainnet
+  priority: high
+  severity: critical
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: "Mainnet - Oracle Alerts"
+title: Oracle Price Staleness > 30s
+uid: cfa994zuj5qf4e
+updated: "2026-02-13T12:51:05.000Z"

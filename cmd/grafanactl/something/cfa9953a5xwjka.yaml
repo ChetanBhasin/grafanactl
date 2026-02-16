@@ -1,0 +1,74 @@
+annotations:
+  description: The USDC PNL pool balance is {{ printf "%.2f" $values.B.Value }}, which is below the $10k threshold.
+  summary: USDC PNL pool balance is below $10k
+condition: C
+data:
+  - datasourceUid: ef7drfxk2ll34d
+    model:
+      editorMode: code
+      format: 1.0
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      meta:
+        builderOptions:
+          mode: list
+      queryType: sql
+      rawSql: |
+        SELECT
+            toStartOfMinute(indexed_time) AS time,
+            any(balance) as balance
+        FROM bullet_mainnet.notable_account_balance_snapshot
+        WHERE $__timeFilter(indexed_time)
+            AND label == 'pnl_pool'
+        GROUP BY time
+        ORDER BY time ASC
+        LIMIT 10000
+      refId: A
+    queryType: sql
+    refId: A
+    relativeTimeRange:
+      from: 600
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: A
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      reducer: last
+      refId: B
+      settings:
+        mode: dropNN
+      type: reduce
+    refId: B
+    relativeTimeRange: {}
+  - datasourceUid: __expr__
+    model:
+      datasource:
+        type: __expr__
+        uid: __expr__
+      expression: $B < 10000
+      intervalMs: 1000.0
+      maxDataPoints: 43200.0
+      refId: C
+      type: math
+    refId: C
+    relativeTimeRange: {}
+execErrState: OK
+folderUID: mainnet-low-priority-alerts
+for: 5m0s
+id: 88
+labels:
+  alert_type: pool_balance
+  environment: mainnet
+  priority: low
+  severity: warning
+  team: platform
+noDataState: OK
+orgID: 1
+provenance: api
+ruleGroup: Pool Balance Alerts
+title: USDC PNL pool balance < $10k
+uid: cfa9953a5xwjka
+updated: "2026-02-13T12:51:05.000Z"
