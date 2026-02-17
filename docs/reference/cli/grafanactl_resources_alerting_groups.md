@@ -29,4 +29,5 @@ Manage Grafana alert rule groups through the provisioning API.
 * [grafanactl resources alerting groups list](grafanactl_resources_alerting_groups_list.md)	 - List alert rule groups
 * [grafanactl resources alerting groups pull](grafanactl_resources_alerting_groups_pull.md)	 - Pull alert rule groups
 * [grafanactl resources alerting groups push](grafanactl_resources_alerting_groups_push.md)	 - Push alert rule groups
+* [grafanactl resources alerting groups validate](grafanactl_resources_alerting_groups_validate.md)	 - Validate alert rule group manifests
 

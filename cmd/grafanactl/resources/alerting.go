@@ -13,6 +13,7 @@ import (
 	"text/tabwriter"
 
 	goruntime "github.com/go-openapi/runtime"
+	goapi "github.com/grafana/grafana-openapi-client-go/client"
 	"github.com/grafana/grafana-openapi-client-go/client/provisioning"
 	"github.com/grafana/grafana-openapi-client-go/models"
 	cmdconfig "github.com/grafana/grafanactl/cmd/grafanactl/config"
@@ -219,6 +220,7 @@ func alertingRulesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	cmd.AddCommand(alertingRulesPullCmd(configOpts))
 	cmd.AddCommand(alertingRulesPushCmd(configOpts))
 	cmd.AddCommand(alertingRulesDeleteCmd(configOpts))
+	cmd.AddCommand(alertingRulesValidateCmd(configOpts))
 
 	return cmd
 }
@@ -321,35 +323,56 @@ func alertingRulesPullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			client, err := loadProvisioningClient(ctx, configOpts)
+			client, err := loadGrafanaClient(ctx, configOpts)
 			if err != nil {
 				return err
 			}
 
 			var (
-				rules    models.ProvisionedAlertRules
-				failures int
+				ruleUIDs          []string
+				ruleUIDToFolderID map[string]string
+				failures          int
 			)
 
+			ruleUIDToFolderID = make(map[string]string)
+
 			if len(args) == 0 {
-				rules, err = listAlertRules(ctx, client)
-				if err != nil {
-					return err
+				rules, listErr := listAlertRules(ctx, client.Provisioning)
+				if listErr != nil {
+					return listErr
 				}
-			} else {
-				rules = make(models.ProvisionedAlertRules, 0, len(args))
-				for _, uid := range args {
-					rule, getErr := getAlertRule(ctx, client, uid)
-					if getErr != nil {
-						failures++
-						if opts.StopOnError {
-							return getErr
-						}
+
+				ruleUIDs = make([]string, 0, len(rules))
+				for _, rule := range rules {
+					if rule == nil {
 						continue
 					}
 
-					rules = append(rules, rule)
+					uid := strings.TrimSpace(rule.UID)
+					if uid != "" {
+						ruleUIDs = append(ruleUIDs, uid)
+						ruleUIDToFolderID[uid] = strings.TrimSpace(stringValue(rule.FolderUID))
+					}
 				}
+			} else {
+				ruleUIDs = make([]string, 0, len(args))
+				for _, rawUID := range args {
+					uid := strings.TrimSpace(rawUID)
+					if uid == "" {
+						continue
+					}
+
+					ruleUIDs = append(ruleUIDs, uid)
+					rule, getErr := getAlertRule(ctx, client.Provisioning, uid)
+					if getErr == nil && rule != nil {
+						ruleUIDToFolderID[uid] = strings.TrimSpace(stringValue(rule.FolderUID))
+					}
+				}
+			}
+
+			folderTitlesByUID := make(map[string]string)
+			if titles, titlesErr := listAlertingFolderTitlesByUID(ctx, client); titlesErr == nil {
+				folderTitlesByUID = titles
 			}
 
 			codec, err := opts.IO.Codec()
@@ -363,8 +386,44 @@ func alertingRulesPullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			usedNames := make(map[string]int)
 			written := 0
-			for i, rule := range rules {
-				fileBase := rule.UID
+			for i, rawUID := range ruleUIDs {
+				uid := strings.TrimSpace(rawUID)
+				if uid == "" {
+					err = fmt.Errorf("rule UID at index %d is empty", i)
+					failures++
+					if opts.StopOnError {
+						return err
+					}
+					continue
+				}
+
+				alertingFile, exportErr := exportAlertRuleByUID(
+					ctx,
+					client.Provisioning,
+					uid,
+					opts.IO.OutputFormat,
+				)
+				if exportErr != nil {
+					failures++
+					if opts.StopOnError {
+						return exportErr
+					}
+					continue
+				}
+
+				if alertingFile == nil || len(alertingFile.Groups) == 0 {
+					err = fmt.Errorf("rule export for UID '%s' returned no groups", uid)
+					failures++
+					if opts.StopOnError {
+						return err
+					}
+					continue
+				}
+
+				hydrateExportFolderNames(alertingFile, ruleUIDToFolderID[uid], folderTitlesByUID)
+				normalizeAlertingFileIntegralNumbers(alertingFile)
+
+				fileBase := uid
 				if fileBase == "" {
 					fileBase = fmt.Sprintf("rule-%d", i+1)
 				}
@@ -373,7 +432,7 @@ func alertingRulesPullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				fileName := fileBase + "." + opts.IO.OutputFormat
 				fullPath := filepath.Join(opts.Path, fileName)
 
-				if writeErr := writeManifestFile(fullPath, codec, rule); writeErr != nil {
+				if writeErr := writeManifestFile(fullPath, codec, alertingFile); writeErr != nil {
 					failures++
 					if opts.StopOnError {
 						return writeErr
@@ -418,7 +477,7 @@ func alertingRulesPushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			client, err := loadProvisioningClient(ctx, configOpts)
+			client, err := loadGrafanaClient(ctx, configOpts)
 			if err != nil {
 				return err
 			}
@@ -430,13 +489,81 @@ func alertingRulesPushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			succeeded := 0
 			failed := 0
+			folderResolverLoaded := false
+			var folderResolver alertingFolderResolver
 
 			for _, file := range files {
-				rules, readErr := readAlertRulesFromFile(file)
+				payload, readErr := readManifestPayload(file)
 				if readErr != nil {
 					failed++
 					if opts.StopOnError {
 						return readErr
+					}
+					continue
+				}
+
+				alertingFile, isAlertingExport, decodeErr := decodeAlertingFileExportPayload(payload)
+				if decodeErr != nil {
+					failed++
+					if opts.StopOnError {
+						return fmt.Errorf("failed to decode alerting export file '%s': %w", file, decodeErr)
+					}
+					continue
+				}
+
+				if isAlertingExport {
+					if !folderResolverLoaded {
+						resolver, buildErr := buildAlertingFolderResolver(ctx, client)
+						if buildErr != nil {
+							failed++
+							if opts.StopOnError {
+								return buildErr
+							}
+							continue
+						}
+						folderResolver = resolver
+						folderResolverLoaded = true
+					}
+
+					convertedGroups, convertErr := convertAlertingFileToRuleGroups(alertingFile, folderResolver)
+					if convertErr != nil {
+						failed++
+						if opts.StopOnError {
+							return fmt.Errorf("failed to convert alerting export file '%s': %w", file, convertErr)
+						}
+						continue
+					}
+
+					for _, convertedGroup := range convertedGroups {
+						if convertedGroup.Group == nil {
+							continue
+						}
+
+						for _, rule := range convertedGroup.Group.Rules {
+							if rule == nil {
+								continue
+							}
+
+							if pushErr := upsertAlertRule(ctx, client.Provisioning, rule, opts.DisableProvenance); pushErr != nil {
+								failed++
+								if opts.StopOnError {
+									return pushErr
+								}
+								continue
+							}
+
+							succeeded++
+						}
+					}
+
+					continue
+				}
+
+				rules, decodeRulesErr := decodeAlertRulesPayload(payload)
+				if decodeRulesErr != nil {
+					failed++
+					if opts.StopOnError {
+						return decodeRulesErr
 					}
 					continue
 				}
@@ -446,7 +573,7 @@ func alertingRulesPushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 						continue
 					}
 
-					if pushErr := upsertAlertRule(ctx, client, rule, opts.DisableProvenance); pushErr != nil {
+					if pushErr := upsertAlertRule(ctx, client.Provisioning, rule, opts.DisableProvenance); pushErr != nil {
 						failed++
 						if opts.StopOnError {
 							return pushErr
@@ -540,6 +667,7 @@ func alertingGroupsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	cmd.AddCommand(alertingGroupsPullCmd(configOpts))
 	cmd.AddCommand(alertingGroupsPushCmd(configOpts))
 	cmd.AddCommand(alertingGroupsDeleteCmd(configOpts))
+	cmd.AddCommand(alertingGroupsValidateCmd(configOpts))
 
 	return cmd
 }
@@ -646,14 +774,14 @@ func alertingGroupsPullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			client, err := loadProvisioningClient(ctx, configOpts)
+			client, err := loadGrafanaClient(ctx, configOpts)
 			if err != nil {
 				return err
 			}
 
 			var refs []alertRuleGroupRef
 			if len(args) == 0 {
-				summaries, listErr := listAlertRuleGroups(ctx, client)
+				summaries, listErr := listAlertRuleGroups(ctx, client.Provisioning)
 				if listErr != nil {
 					return listErr
 				}
@@ -675,6 +803,11 @@ func alertingGroupsPullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				}
 			}
 
+			folderTitlesByUID := make(map[string]string)
+			if titles, titlesErr := listAlertingFolderTitlesByUID(ctx, client); titlesErr == nil {
+				folderTitlesByUID = titles
+			}
+
 			codec, err := opts.IO.Codec()
 			if err != nil {
 				return err
@@ -689,21 +822,42 @@ func alertingGroupsPullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			failed := 0
 
 			for _, ref := range refs {
-				group, getErr := getAlertRuleGroup(ctx, client, ref)
-				if getErr != nil {
+				alertingFile, exportErr := exportAlertRuleGroupByRef(
+					ctx,
+					client.Provisioning,
+					ref,
+					opts.IO.OutputFormat,
+				)
+				if exportErr != nil {
 					failed++
 					if opts.StopOnError {
-						return getErr
+						return exportErr
 					}
 					continue
 				}
+
+				if alertingFile == nil || len(alertingFile.Groups) == 0 {
+					err = fmt.Errorf(
+						"group export for '%s/%s' returned no groups",
+						ref.FolderUID,
+						ref.Group,
+					)
+					failed++
+					if opts.StopOnError {
+						return err
+					}
+					continue
+				}
+
+				hydrateExportFolderNames(alertingFile, ref.FolderUID, folderTitlesByUID)
+				normalizeAlertingFileIntegralNumbers(alertingFile)
 
 				baseName := sanitizeFileNamePart(ref.FolderUID) + "__" + sanitizeFileNamePart(ref.Group)
 				baseName = nextUniqueBaseName(usedNames, baseName)
 				fileName := baseName + "." + opts.IO.OutputFormat
 				fullPath := filepath.Join(opts.Path, fileName)
 
-				if writeErr := writeManifestFile(fullPath, codec, group); writeErr != nil {
+				if writeErr := writeManifestFile(fullPath, codec, alertingFile); writeErr != nil {
 					failed++
 					if opts.StopOnError {
 						return writeErr
@@ -748,7 +902,7 @@ func alertingGroupsPushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			client, err := loadProvisioningClient(ctx, configOpts)
+			client, err := loadGrafanaClient(ctx, configOpts)
 			if err != nil {
 				return err
 			}
@@ -760,13 +914,82 @@ func alertingGroupsPushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			succeeded := 0
 			failed := 0
+			folderResolverLoaded := false
+			var folderResolver alertingFolderResolver
 
 			for _, file := range files {
-				groups, readErr := readAlertRuleGroupsFromFile(file)
+				payload, readErr := readManifestPayload(file)
 				if readErr != nil {
 					failed++
 					if opts.StopOnError {
 						return readErr
+					}
+					continue
+				}
+
+				alertingFile, isAlertingExport, decodeErr := decodeAlertingFileExportPayload(payload)
+				if decodeErr != nil {
+					failed++
+					if opts.StopOnError {
+						return fmt.Errorf("failed to decode alerting export file '%s': %w", file, decodeErr)
+					}
+					continue
+				}
+
+				if isAlertingExport {
+					if !folderResolverLoaded {
+						resolver, buildErr := buildAlertingFolderResolver(ctx, client)
+						if buildErr != nil {
+							failed++
+							if opts.StopOnError {
+								return buildErr
+							}
+							continue
+						}
+						folderResolver = resolver
+						folderResolverLoaded = true
+					}
+
+					convertedGroups, convertErr := convertAlertingFileToRuleGroups(alertingFile, folderResolver)
+					if convertErr != nil {
+						failed++
+						if opts.StopOnError {
+							return fmt.Errorf("failed to convert alerting export file '%s': %w", file, convertErr)
+						}
+						continue
+					}
+
+					for _, convertedGroup := range convertedGroups {
+						if convertedGroup.Group == nil {
+							continue
+						}
+
+						putErr := upsertAlertRuleGroup(
+							ctx,
+							client.Provisioning,
+							convertedGroup.Ref,
+							convertedGroup.Group,
+							opts.DisableProvenance,
+						)
+						if putErr != nil {
+							failed++
+							if opts.StopOnError {
+								return putErr
+							}
+							continue
+						}
+
+						succeeded++
+					}
+
+					continue
+				}
+
+				groups, decodeGroupsErr := decodeAlertRuleGroupsPayload(payload)
+				if decodeGroupsErr != nil {
+					failed++
+					if opts.StopOnError {
+						return decodeGroupsErr
 					}
 					continue
 				}
@@ -785,7 +1008,7 @@ func alertingGroupsPushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 						continue
 					}
 
-					putErr := upsertAlertRuleGroup(ctx, client, alertRuleGroupRef{
+					putErr := upsertAlertRuleGroup(ctx, client.Provisioning, alertRuleGroupRef{
 						FolderUID: group.FolderUID,
 						Group:     group.Title,
 					}, group, opts.DisableProvenance)
@@ -880,13 +1103,17 @@ func alertingGroupsDeleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	return cmd
 }
 
-func loadProvisioningClient(ctx context.Context, configOpts *cmdconfig.Options) (provisioning.ClientService, error) {
+func loadGrafanaClient(ctx context.Context, configOpts *cmdconfig.Options) (*goapi.GrafanaHTTPAPI, error) {
 	cfg, err := configOpts.LoadConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	client, err := grafana.ClientFromContext(cfg.GetCurrentContext())
+	return grafana.ClientFromContext(cfg.GetCurrentContext())
+}
+
+func loadProvisioningClient(ctx context.Context, configOpts *cmdconfig.Options) (provisioning.ClientService, error) {
+	client, err := loadGrafanaClient(ctx, configOpts)
 	if err != nil {
 		return nil, err
 	}

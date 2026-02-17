@@ -29,4 +29,5 @@ Manage Grafana alert rules through the provisioning API.
 * [grafanactl resources alerting rules list](grafanactl_resources_alerting_rules_list.md)	 - List alert rules
 * [grafanactl resources alerting rules pull](grafanactl_resources_alerting_rules_pull.md)	 - Pull alert rules
 * [grafanactl resources alerting rules push](grafanactl_resources_alerting_rules_push.md)	 - Push alert rules
+* [grafanactl resources alerting rules validate](grafanactl_resources_alerting_rules_validate.md)	 - Validate alert rule manifests
 
